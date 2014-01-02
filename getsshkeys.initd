@@ -1,0 +1,70 @@
+#!/bin/bash
+# chkconfig: 2345 30 20
+# description: getsshkeys
+# processname: getsshkeys
+#
+
+export PATH=:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+
+AWS_INSTANCE_KEY_URL='http://169.254.169.254/latest/meta-data/public-keys/0/openssh-key'
+ROOT_AUTHFILE="/root/.ssh/authorized_keys"
+
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+# Source networking configuration.
+[ -r /etc/sysconfig/network ] && . /etc/sysconfig/network
+
+# Check that networking is up.
+[ "${NETWORKING}" = "no" ] && exit 1
+
+function update_root_keys() {
+  TEMPKEYS=$(mktemp --tmpdir AWS_ssh_keys.XXXXX)
+  logger -t setup-sshkeys "${0}: Loading ssh pubkey from ${AWS_INSTANCE_KEY_URL}"
+  curl -f ${AWS_INSTANCE_KEY_URL} > ${TEMPKEYS}
+  diff ${ROOT_AUTHFILE} ${TEMPKEYS} > /dev/null
+  if [ $? != 0 ]; then
+    logger -t setup-sshkeys "${0}: Updating ${ROOT_AUTHFILE}..."
+    echo "Updating ${ROOT_AUTHFILE}..."
+    cat ${TEMPKEYS} > ${ROOT_AUTHFILE}
+    chown root:root ${ROOT_AUTHFILE}
+    chmod 600 ${ROOT_AUTHFILE}
+  fi
+  rm -f ${TEMPKEYS}
+}
+
+start() {
+  if [ ! -d /root/.ssh ] ; then
+    mkdir -p -m 700 /root/.ssh
+    chown root:root /root/.ssh
+  fi
+  update_root_keys
+}
+
+stop() {
+  echo "Stop? There is no stop."
+}
+
+restart() {
+  stop
+  start
+}
+
+# See how we were called.
+case "$1" in
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  restart)
+    restart
+    ;;
+  *)
+    echo "Usage: $0 {start|stop}"
+    exit 1
+esac
+
+exit $?
